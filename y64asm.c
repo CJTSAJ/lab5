@@ -164,10 +164,18 @@ void add_reloc(char *name, bin_t *bin)
     /* create new reloc_t (don't forget to free it)*/
     /* add the new reloc_t to relocation table */
     reloc_t *tempReloc = reltab;
+    while(tempReloc){
+      if(name == tempReloc->name){
+        return -1;
+      }
+      tempReloc = tempReloc->next;
+    }
+    tempReloc = reltab;
     reltab = (reloc_t *)malloc(sizeof(reloc_t));
     reltab->name = name;
     reltab->y64bin = bin;
     reltab->next = tempReloc;
+    return 0;
 }
 
 
@@ -179,7 +187,7 @@ void add_reloc(char *name, bin_t *bin)
 #define IS_IMM(s) (*(s)=='$')
 
 #define IS_BLANK(s) (*(s)==' ' || *(s)=='\t')
-#define IS_END(s) (*(s)=='\0')    /*the end of the string*/
+#define IS_END(s) (*(s)=='\0')    /*the end of the string(M)*/
 
 #define SKIP_BLANK(s) do {  \
   while(!IS_END(s) && IS_BLANK(s))  \
@@ -205,13 +213,16 @@ parse_t parse_instr(char **ptr, instr_t **inst)
 {
     /* skip the blank */
     *ptr = SKIP_BLANK(*ptr);
+
     /* find_instr and check end */
-    /* set 'ptr' and 'inst' */
-    if(!find_instr((*inst)->name)){
+    inst_t *currInst = find_instr((*inst)->name);
 
+    if(currInst){
+      /* set 'ptr' and 'inst'??? */
+      *ptr += currInst->len;
+
+      return PARSE_INSTR;
     }
-
-
     return PARSE_ERR;
 }
 
@@ -226,10 +237,10 @@ parse_t parse_instr(char **ptr, instr_t **inst)
  */
 parse_t parse_delim(char **ptr, char delim)
 {
-    /* skip the blank and check */
-
+    /* skip the blank and check??? */
+    *ptr = SKIP_BLANK(*ptr);
     /* set 'ptr' */
-
+    if(**ptr == delim)return PARSE_DELIM;
     return PARSE_ERR;
 }
 
@@ -423,20 +434,24 @@ type_t parse_line(line_t *line)
 *           call SUM  #invoke SUM function */
 
     /* skip blank and check IS_END */
-
-    /* is a comment ? */
-
-    /* is a label ? */
-
-    /* is an instruction ? */
+    line->y64asm = SKIP_BLANK(y64asm);
 
     /* set type and y64bin */
+    /* is a comment ? */
+    if(IS_COMMENT(line->y64asm))line->type = TYPE_COMM;
+    /* is a label ? */
+    else if(parse_label(&(line->y64asm)) == PARSE_LABEL)line->type = TYPE_INS;
+    /* is an instruction ? */
+    else if(parse_instr(&(line->y64asm)) == PARSE_INSTR){
+      line->type = TYPE_INS;
+
+      /* parse the rest of instruction according to the itype */
+    }
+
+    else line->type = TYPE_ERR;
 
     /* update vmaddr */
 
-    /* parse the rest of instruction according to the itype */
-
-    line->type = TYPE_ERR;
     return line->type;
 }
 

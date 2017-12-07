@@ -215,12 +215,22 @@ parse_t parse_instr(char **ptr, instr_t **inst)
     *ptr = SKIP_BLANK(*ptr);
 
     /* find_instr and check end */
-    inst_t *currInst = find_instr((*inst)->name);
+    char *temp = *ptr;
+    int i = 0;
+    for(i; i < 7; i++){
+      if(*temp == ' ' || *temp == '\0')break;
+      i++;
+    }
+
+    char tempStr[i];
+
+    strncmp(tempStr, *ptr, i);
+    inst_t *currInst = find_instr(tempStr);
 
     if(currInst){
-      /* set 'ptr' and 'inst'??? */
+      /* set 'ptr' and 'inst' */
       *ptr += currInst->len;
-
+      *inst = currInst;
       return PARSE_INSTR;
     }
     return PARSE_ERR;
@@ -239,6 +249,7 @@ parse_t parse_delim(char **ptr, char delim)
 {
     /* skip the blank and check??? */
     *ptr = SKIP_BLANK(*ptr);
+    if(IS_END(*ptr));
     /* set 'ptr' */
     if(**ptr == delim)return PARSE_DELIM;
     return PARSE_ERR;
@@ -247,7 +258,7 @@ parse_t parse_delim(char **ptr, char delim)
 /*
  * parse_reg: parse an expected register token (e.g., '%rax')
  * args
- *     ptr: point to the start of string
+ *     ptr: point to the start  of string
  *     regid: point to the regid of register
  *
  * return
@@ -257,12 +268,20 @@ parse_t parse_delim(char **ptr, char delim)
  */
 parse_t parse_reg(char **ptr, regid_t *regid)
 {
-    /* skip the blank and check */
-
+    /* skip the blank and check??? */
+    *ptr = SKIP_BLANK(*ptr);
     /* find register */
+    char tempStr[4];
+    strncpy(tempStr, *ptr, 4);
+
+    regid_t *tempRegid = find_register(tempStr);
 
     /* set 'ptr' and 'regid' */
-
+    if(tempRegid!=NULL){
+      *regid = *tempRegid;
+      *ptr += 4;
+      return PARSE_REG;
+    }
     return PARSE_ERR;
 }
 
@@ -280,9 +299,9 @@ parse_t parse_reg(char **ptr, regid_t *regid)
 parse_t parse_symbol(char **ptr, char **name)
 {
     /* skip the blank and check */
-
+    *ptr = SKIP_BLANK(*ptr);
     /* allocate name and copy to it */
-
+    
     /* set 'ptr' and 'name' */
 
     return PARSE_ERR;

@@ -7,6 +7,7 @@
 #include <assert.h>
 
 #define MAX_INSLEN  512
+#define REG_SIZE  4
 
 typedef unsigned char byte_t;
 typedef int64_t word_t;

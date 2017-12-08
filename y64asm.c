@@ -114,9 +114,7 @@ symbol_t *find_symbol(char *name)
 {
   symbol_t *tempSymbol = symtab;
   while(tempSymbol){
-    if(tempSymbol->name == name){
-      return tempSymbol;
-    }
+    if(!strcmp(tempSymbol->name, name)) return tempSymbol;
     tempSymbol = tempSymbol->next;
   }
   return NULL;
@@ -136,11 +134,11 @@ int add_symbol(char *name)
     /* check duplicate */
     /* create new symbol_t (don't forget to free it)*/
     /* add the new symbol_t to symbol table */
-    if(!find_symbol(name)){
+    if(find_symbol(name) == NULL){
       symbol_t *tempSymbol = symtab;
       symtab = (symbol_t *)malloc(sizeof(symbol_t));
       symtab->name = name;
-      //symtab->addr = ;   /*addr???*/
+      symtab->addr = vmaddr;
       symtab->next = tempSymbol;
       return 0;
     }
@@ -178,7 +176,7 @@ void add_reloc(char *name, bin_t *bin)
     return 0;
 }
 
-
+/*the end of the string(M)*/
 /* macro for parsing y64 assembly code */
 #define IS_DIGIT(s) ((*(s)>='0' && *(s)<='9') || *(s)=='-' || *(s)=='+')
 #define IS_LETTER(s) ((*(s)>='a' && *(s)<='z') || (*(s)>='A' && *(s)<='Z'))
@@ -187,7 +185,7 @@ void add_reloc(char *name, bin_t *bin)
 #define IS_IMM(s) (*(s)=='$')
 
 #define IS_BLANK(s) (*(s)==' ' || *(s)=='\t')
-#define IS_END(s) (*(s)=='\0')    /*the end of the string(M)*/
+#define IS_END(s) (*(s)=='\0')
 
 #define SKIP_BLANK(s) do {  \
   while(!IS_END(s) && IS_BLANK(s))  \
@@ -211,25 +209,20 @@ typedef enum { PARSE_ERR=-1, PARSE_REG, PARSE_DIGIT, PARSE_SYMBOL,
  */
 parse_t parse_instr(char **ptr, instr_t **inst)
 {
+    char *tempStr = *ptr;
     /* skip the blank */
-    *ptr = SKIP_BLANK(*ptr);
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr)) return PARSE_ERR;
 
     /* find_instr and check end */
-    char *temp = *ptr;
-    int i = 0;
-    for(i; i < 7; i++){
-      if(*temp == ' ' || *temp == '\0')break;
-      i++;
-    }
+    instr_t *currInst = find_instr(tempStr);
+    tempStr += currInst->len;
 
-    char tempStr[i];
+    if(!IS_END(tempStr) && !IS_BLANK(tempStr)) return PARSE_ERR;
 
-    strncmp(tempStr, *ptr, i);
-    inst_t *currInst = find_instr(tempStr);
-
-    if(currInst){
+    if(currInst != NULL){
       /* set 'ptr' and 'inst' */
-      *ptr += currInst->len;
+      *ptr = tempStr;
       *inst = currInst;
       return PARSE_INSTR;
     }
@@ -247,11 +240,18 @@ parse_t parse_instr(char **ptr, instr_t **inst)
  */
 parse_t parse_delim(char **ptr, char delim)
 {
-    /* skip the blank and check??? */
-    *ptr = SKIP_BLANK(*ptr);
-    if(IS_END(*ptr));
+    char *tempStr = *ptr;
+
+    /* skip the blank and check */
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr)) return PARSE_ERR;
+
     /* set 'ptr' */
-    if(**ptr == delim)return PARSE_DELIM;
+    if(*tempStr == delim){
+      tempStr++;
+      *ptr = tempStr;
+      return PARSE_DELIM;
+    }
     return PARSE_ERR;
 }
 
@@ -268,18 +268,20 @@ parse_t parse_delim(char **ptr, char delim)
  */
 parse_t parse_reg(char **ptr, regid_t *regid)
 {
-    /* skip the blank and check??? */
-    *ptr = SKIP_BLANK(*ptr);
-    /* find register */
-    char tempStr[4];
-    strncpy(tempStr, *ptr, 4);
+    char *tempStr = *ptr;
 
+    /* skip the blank and check */
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr) || !IS_REG(tempStr)) return PARSE_ERR;
+
+    /* find register */
     regid_t *tempRegid = find_register(tempStr);
 
     /* set 'ptr' and 'regid' */
     if(tempRegid!=NULL){
       *regid = *tempRegid;
-      *ptr += 4;
+      tempStr += REG_SIZE;
+      *ptr = tempStr;
       return PARSE_REG;
     }
     return PARSE_ERR;
@@ -298,13 +300,25 @@ parse_t parse_reg(char **ptr, regid_t *regid)
  */
 parse_t parse_symbol(char **ptr, char **name)
 {
+    char *tempStr = *ptr;
     /* skip the blank and check */
-    *ptr = SKIP_BLANK(*ptr);
+    SKIP_BLANK(tempStr);
+    if (IS_END(tempStr) || !IS_LETTER(tempStr)) return PARSE_ERR;
     /* allocate name and copy to it */
-    
-    /* set 'ptr' and 'name' */
+    int length = 0;
+    while (IS_LETTER(tempStr) || IS_DIGIT(tempStr)){
+      temp++;
+      length++;
+    }
 
-    return PARSE_ERR;
+    /* set 'ptr' and 'name' */
+    char *tempSymbol = (char*)malloc(length + 1);
+    memcpy(tempSymbol, *ptr, length);
+    memset(tempStr, '\0', length +1);
+
+    *name = tempSymbol;
+    *ptr = tempStr;
+    return PARSE_SYMBOL;
 }
 
 /*
@@ -320,13 +334,18 @@ parse_t parse_symbol(char **ptr, char **name)
  */
 parse_t parse_digit(char **ptr, long *value)
 {
+    char *tempStr = *ptr;
+    char *endP;
+
     /* skip the blank and check */
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr) || !IS_DIGIT(tempStr)) return PARSE_ERR;
 
     /* calculate the digit, (NOTE: see strtoull()) */
-
+    *value = strtoull(*tempStr, &endP, 0);
     /* set 'ptr' and 'value' */
-
-    return PARSE_ERR;
+    *ptr = endP;
+    return PARSE_DIGIT;
 
 }
 
@@ -348,13 +367,27 @@ parse_t parse_digit(char **ptr, long *value)
  */
 parse_t parse_imm(char **ptr, char **name, long *value)
 {
+    char *tempStr = *ptr;
+
     /* skip the blank and check */
-
-    /* if IS_IMM, then parse the digit */
-
-    /* if IS_LETTER, then parse the symbol */
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr)) return PARSE_ERR;
 
     /* set 'ptr' and 'name' or 'value' */
+    /* if IS_IMM, then parse the digit */
+    if(IS_IMM(tempStr)){
+      tempStr++;
+      if(PARSE_DIGIT(tempStr, value) == PARSE_ERR) return PARSE_ERR;
+      *ptr = tempStr;
+      return PARSE_DIGIT;
+    }
+
+    /* if IS_LETTER, then parse the symbol */
+    if(IS_LETTER(tempStr)){
+      if(parse_symbol(tempStr, name) == PARSE_ERR) return PARSE_ERR;
+      *ptr = tempStr;
+      return PARSE_SYMBOL;
+    }
 
     return PARSE_ERR;
 }
@@ -374,10 +407,14 @@ parse_t parse_imm(char **ptr, char **name, long *value)
  */
 parse_t parse_mem(char **ptr, long *value, regid_t *regid)
 {
+    char *tempStr = *ptr;
+
     /* skip the blank and check */
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr)) return PARSE_ERR;
 
     /* calculate the digit and register, (ex: (%rbp) or 8(%rbp)) */
-
+    
     /* set 'ptr', 'value' and 'regid' */
 
     return PARSE_ERR;
@@ -453,15 +490,17 @@ type_t parse_line(line_t *line)
 *           call SUM  #invoke SUM function */
 
     /* skip blank and check IS_END */
-    line->y64asm = SKIP_BLANK(y64asm);
+    SKIP_BLANK(line->y64asm);
 
+    instr_t **inst;
+    char **labelName;
     /* set type and y64bin */
     /* is a comment ? */
     if(IS_COMMENT(line->y64asm))line->type = TYPE_COMM;
     /* is a label ? */
-    else if(parse_label(&(line->y64asm)) == PARSE_LABEL)line->type = TYPE_INS;
+    else if(parse_label(&(line->y64asm), labelName) == PARSE_LABEL)line->type = TYPE_INS;
     /* is an instruction ? */
-    else if(parse_instr(&(line->y64asm)) == PARSE_INSTR){
+    else if(parse_instr(&(line->y64asm), inst) == PARSE_INSTR){
       line->type = TYPE_INS;
 
       /* parse the rest of instruction according to the itype */

@@ -162,13 +162,12 @@ void add_reloc(char *name, bin_t *bin)
     /* create new reloc_t (don't forget to free it)*/
     /* add the new reloc_t to relocation table */
     reloc_t *tempReloc = reltab;
-    while(tempReloc){
+    /*while(tempReloc){
       if(name == tempReloc->name){
         return -1;
       }
       tempReloc = tempReloc->next;
-    }
-    tempReloc = reltab;
+    }*/
     reltab = (reloc_t *)malloc(sizeof(reloc_t));
     reltab->name = name;
     reltab->y64bin = bin;
@@ -301,13 +300,15 @@ parse_t parse_reg(char **ptr, regid_t *regid)
 parse_t parse_symbol(char **ptr, char **name)
 {
     char *tempStr = *ptr;
+
     /* skip the blank and check */
     SKIP_BLANK(tempStr);
     if (IS_END(tempStr) || !IS_LETTER(tempStr)) return PARSE_ERR;
+
     /* allocate name and copy to it */
     int length = 0;
     while (IS_LETTER(tempStr) || IS_DIGIT(tempStr)){
-      temp++;
+      tempStr++;
       length++;
     }
 
@@ -377,14 +378,14 @@ parse_t parse_imm(char **ptr, char **name, long *value)
     /* if IS_IMM, then parse the digit */
     if(IS_IMM(tempStr)){
       tempStr++;
-      if(PARSE_DIGIT(tempStr, value) == PARSE_ERR) return PARSE_ERR;
+      if(parse_digit(&tempStr, value) == PARSE_ERR) return PARSE_ERR;
       *ptr = tempStr;
       return PARSE_DIGIT;
     }
 
     /* if IS_LETTER, then parse the symbol */
     if(IS_LETTER(tempStr)){
-      if(parse_symbol(tempStr, name) == PARSE_ERR) return PARSE_ERR;
+      if(parse_symbol(&tempStr, name) == PARSE_ERR) return PARSE_ERR;
       *ptr = tempStr;
       return PARSE_SYMBOL;
     }
@@ -408,15 +409,23 @@ parse_t parse_imm(char **ptr, char **name, long *value)
 parse_t parse_mem(char **ptr, long *value, regid_t *regid)
 {
     char *tempStr = *ptr;
-
+    *value = 0;
     /* skip the blank and check */
     SKIP_BLANK(tempStr);
     if(IS_END(tempStr)) return PARSE_ERR;
 
-    /* calculate the digit and register, (ex: (%rbp) or 8(%rbp)) */
-    
     /* set 'ptr', 'value' and 'regid' */
+    /* calculate the digit and register, (ex: (%rbp) or 8(%rbp)) */
+    if(IS_DIGIT(tempStr)){
+      if(parse_digit(&tempStr, value) == PARSE_ERR) return PARSE_ERR;
+    }
+    if(*tempStr != '(') return PARSE_ERR;
+    tempStr++;
+    if(parse_reg(&tempStr, regid) == PARSE_ERR) return PARSE_ERR;
+    if(*tempStr != ')') return PARSE_ERR;
+    tempStr++;
 
+    *ptr = tempStr;
     return PARSE_ERR;
 }
 
@@ -438,13 +447,26 @@ parse_t parse_mem(char **ptr, long *value, regid_t *regid)
  */
 parse_t parse_data(char **ptr, char **name, long *value)
 {
+    char *tempStr = *ptr;
+
     /* skip the blank and check */
-
-    /* if IS_DIGIT, then parse the digit */
-
-    /* if IS_LETTER, then parse the symbol */
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr)) return PARSE_ERR;
 
     /* set 'ptr', 'name' and 'value' */
+    /* if IS_DIGIT, then parse the digit */
+    if(IS_DIGIT(tempStr)){
+      if(parse_digit(&tempStr, value) == PARSE_ERR) return PARSE_ERR;
+      *ptr = tempStr;
+      return PARSE_DIGIT;
+    }
+
+    /* if IS_LETTER, then parse the symbol */
+    if(IS_LETTER(tempStr)){
+      if(parse_symbol(&tempStr, name) == PARSE_ERR) return PARSE_ERR;
+      *ptr = tempStr;
+      return PARSE_SYMBOL;
+    }
 
     return PARSE_ERR;
 }
@@ -462,13 +484,30 @@ parse_t parse_data(char **ptr, char **name, long *value)
  */
 parse_t parse_label(char **ptr, char **name)
 {
+    char *tempStr = *ptr;
+
     /* skip the blank and check */
+    SKIP_BLANK(tempStr);
+    if(IS_END(tempStr) || !IS_LETTER(tempStr)) return PARSE_ERR;
+    *ptr = tempStr;
 
     /* allocate name and copy to it */
+    int length = 0;
+    while (IS_LETTER(tempStr) || IS_DIGIT(tempStr)) {
+      tempStr++;
+      length++;
+    }
+
+    if(*tempStr != ':') return PARSE_ERR;
+    tempStr++;
 
     /* set 'ptr' and 'name' */
+    *name = (char*)malloc(length + 1);
+    memcpy(*name, *ptr, length);
+    memset(*name, '\0', length + 1);
+    *ptr = tempStr;
 
-    return PARSE_ERR;
+    return PARSE_LABEL;
 }
 
 /*
@@ -483,32 +522,217 @@ parse_t parse_label(char **ptr, char **name)
  */
 type_t parse_line(line_t *line)
 {
+    char *y64asm = line->y64asm;
+
+    instr_t *inst = NULL;
+    char *labelName = NULL;
+
+    char *symbolName = NULL;
+    regid_t regidA;
+    regid_t regidB;
+
+    long value;
 
 /* when finish parse an instruction or lable, we still need to continue check
 * e.g.,
 *  Loop: mrmovl (%rbp), %rcx
 *           call SUM  #invoke SUM function */
 
+mainPro:
     /* skip blank and check IS_END */
-    SKIP_BLANK(line->y64asm);
+    SKIP_BLANK(y64asm);
+    if(IS_END(y64asm)) return line->type;
 
-    instr_t **inst;
-    char **labelName;
     /* set type and y64bin */
     /* is a comment ? */
-    if(IS_COMMENT(line->y64asm))line->type = TYPE_COMM;
-    /* is a label ? */
-    else if(parse_label(&(line->y64asm), labelName) == PARSE_LABEL)line->type = TYPE_INS;
-    /* is an instruction ? */
-    else if(parse_instr(&(line->y64asm), inst) == PARSE_INSTR){
-      line->type = TYPE_INS;
+    if(IS_COMMENT(y64asm)) return line->type;
 
-      /* parse the rest of instruction according to the itype */
+    /* is a label ? */
+    if(parse_label(&y64asm, &labelName) == PARSE_LABEL){
+
+      /*if has existed*/
+      if(add_symbol(labelName) == -1) {
+        line->type = TYPE_ERR;
+        err_print("Dup symbol:%s", labelName);
+        return line->type;
+      }
+
+      /*else set type and y64bin*/
+      line->type = TYPE_INS;
+      line->y64bin.addr = vmaddr;
+
+      goto mainPro;
     }
+
+    /* is an instruction ? */
+    if(parse_instr(&y64asm), &inst) == PARSE_ERR){
+      line->type = TYPE_ERR;
+      err_print("Invalid instr");
+      return line->type;
+    }
+
+    /* parse the rest of instruction according to the itype */
+    highCode = HIGH(inst->code);
+    lowCode = LOW(inst->code);
+
+    line->y64bin.codes[0] = inst->code;
+    line->type = TYPE_INS;
+
+    switch (highCode) {
+      case I_HALT:
+      case I_NOP:
+      case I_RET: return line->type;
+
+      /*2:x*/
+      case I_ALU:
+      case I_RRMOVQ:{
+        /*parse regidA*/
+        if(parse_reg(&y64asm, &regidA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        /*parse ','*/
+        if(parse_delim(&y64asm, COMMA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        /*parse regidB*/
+        if(parse_reg(&y64asm, &regidA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        line->y64bin.codes[1] = HPACK(regidA, regidB);
+        return line->type;
+      }
+
+      case I_IRMOVQ:{
+        /*parse value*/
+        parse_t parseType = parse_imm(&y64asm, &symbolName, &value);
+        if(parseType == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        if(parseType == PARSE_SYMBOL){
+          value = 0;
+          add_reloc(symbolName, &(line->y64bin));
+        }
+
+        /*parse ','*/
+        if(parse_delim(&y64asm, COMMA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        /*parse regidB*/
+        if(parse_reg(&y64asm, &regidB) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        /*set value*/
+        line->y64bin.codes[1] = HPACK(REG_NONE, regidB);
+        long *temp = (long*)(line->y64bin.codes[2]);
+        *temp = value;
+
+        return line->type;
+      }
+
+      case I_RMMOVQ:{
+        /*parse regidA*/
+        if(parse_reg(&y64asm, &regidA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        /*parse COMMA*/
+        if(parse_delim(&y64asm, COMMA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        /*parse mem*/
+        if(parse_mem(&y64asm, &value, &regidB) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        line->y64bin.codes[1] = HPACK(regidA, regidB);
+        long *temp = (long*)(line->y64bin.codes[2]);
+        *temp = value;
+
+        return line->type;
+      }
+
+      case I_MRMOVQ:{
+        /*parse mem*/
+        if(parse_mem(&y64asm, &value, regidB) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        if(parse_delim(&y64asm, COMMA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        if(parse_reg(&y64asm, &regidA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        line->y64bin.codes[1] = HPACK(regidA, regidB);
+        long *temp = (long*)(line->y64bin.codes[2]);
+        *temp = value;
+      }
+
+      case I_JMP:
+      case I_CALL:{
+        /*parse symbol*/
+        if(parse_symbol(&y64asm, symbolName) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        add_reloc(symbol, line->y64bin);
+        return line->type;
+      }
+
+      case I_PUSHQ:
+      case I_POPQ:{
+        /*parse regidA*/
+        if(parse_reg(&y64asm, &regidA) == PARSE_ERR){
+          line->type = TYPE_ERR;
+          err_print("");
+          return line->type;
+        }
+
+        line->y64bin.codes[1] = HPACK(regidA, REG_NONE);
+        return line->type;
+      }
+    }
+
 
     else line->type = TYPE_ERR;
 
     /* update vmaddr */
+    vmaddr += inst->bytes;
 
     return line->type;
 }
@@ -543,7 +767,7 @@ int assemble(FILE *in)
         line = (line_t *)malloc(sizeof(line_t)); // free in finit
         memset(line, '\0', sizeof(line_t));
 
-        line->type = TYPE_COMM;
+        line->type = TYPE_COMM;  /*default*/
         line->y64asm = y64asm;
         line->next = NULL;
 
